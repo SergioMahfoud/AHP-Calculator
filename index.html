@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AHP Calculator</title>
+    <style>
+        .matrix-row {
+            margin-bottom: 5px;
+        }
+
+        .matrix-size-container {
+            margin-bottom: 20px; 
+        }
+
+        #matrix-container {
+            margin-bottom: 30px;
+        }
+
+        .results {
+            margin-top: 20px;
+        }
+
+        .results h2 {
+            margin-bottom: 10px;
+        }
+
+        #alternatives-container {
+            margin-bottom: 10px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>AHP Calculator</h1>
+
+    <div class="matrix-size-container">
+        <label for="matrix-size">Enter number of criteria:</label>
+        <input type="number" id="matrix-size" min="2" onchange="generateUpperTriangleMatrix()">
+    </div>
+
+    <div id="matrix-container"></div>
+    <button onclick="calculateAHP()">Calculate AHP</button>
+
+    <div id="results" class="results"></div>
+
+    <div id="alternatives-section" class="matrix-size-container" style="display:none;">
+        <label for="alternatives-size">Enter number of alternatives:</label>
+        <input type="number" id="alternatives-size" min="1" onchange="generateAlternativesMatrix()">
+        <div id="alternatives-container"></div>
+        <button onclick="calculateAlternatives()">Calculate Alternatives</button>
+    </div>
+
+    <div id="results2" class="results"></div>
+
+    <script>
+        let criteriaWeights = [];
+
+        function generateUpperTriangleMatrix() {
+            const size = document.getElementById("matrix-size").value;
+            const container = document.getElementById("matrix-container");
+            container.innerHTML = "";
+
+            for (let i = 0; i < size; i++) {
+                const rowDiv = document.createElement("div");
+                rowDiv.className = "matrix-row";
+
+                for (let j = 0; j < size; j++) {
+                    const input = document.createElement("input");
+                    input.type = "number";
+                    input.step = "0.01";
+                    input.id = `matrix-${i}-${j}`;
+                    input.value = i === j ? 1 : "";
+
+                    if (i > j) {
+                        input.disabled = true;
+                        input.style.visibility = "hidden";
+                    } else {
+                        if (i === j || i < j) {
+                            if (input.value == "1") {
+                                input.disabled = true;
+                                input.style.backgroundColor = "#f0f0f0";
+                            }
+
+                            input.addEventListener("input", () => {
+                                const value = parseFloat(input.value) || 1;
+                                const inverseInput = document.getElementById(`matrix-${j}-${i}`);
+                                if (inverseInput) {
+                                    inverseInput.value = (1 / value).toFixed(3);
+                                }
+                            });
+                        }
+                    }
+
+                    rowDiv.appendChild(input);
+                }
+                container.appendChild(rowDiv);
+            }
+        }
+
+        function calculateAHP() {
+            const size = parseInt(document.getElementById("matrix-size").value);
+            if (isNaN(size) || size < 2) {
+                alert("Please enter a valid matrix size (at least 2).");
+                return;
+            }
+
+            const matrix = Array.from({ length: size }, () => Array(size).fill(0));
+
+            for (let i = 0; i < size; i++) {
+                for (let j = 0; j < size; j++) {
+                    const input = document.getElementById(`matrix-${i}-${j}`);  // Correct template literal
+                    matrix[i][j] = parseFloat(input.value) || 1;
+                }
+            }
+
+            const results = ahp(matrix);
+            criteriaWeights = results.criteriaWeights;
+            displayResults(results);
+
+            document.getElementById("alternatives-section").style.display = "block";
+        }
+
+        function ahp(matrix) {
+            const n = matrix.length;
+
+            const columnSums = Array(n).fill(0).map((_, j) =>
+                matrix.reduce((sum, row) => sum + row[j], 0)
+            );
+            const normalizedMatrix = matrix.map(row =>
+                row.map((value, j) => +(value / columnSums[j]).toFixed(3))
+            );
+
+            const criteriaWeights = normalizedMatrix.map(row =>
+                +(row.reduce((sum, value) => sum + value, 0) / n).toFixed(3)
+            );
+
+            const weightedSum = matrix.map(row =>
+                +(row.reduce((sum, value, j) => sum + value * criteriaWeights[j], 0)).toFixed(3)
+            );
+
+            const lambdaMax = +(weightedSum.reduce((sum, value, i) => sum + value / criteriaWeights[i], 0) / n).toFixed(3);
+            const CI = +((lambdaMax - n) / (n - 1)).toFixed(3);
+
+            const RIValues = {
+                1: 0.00, 2: 0.00, 3: 0.58, 4: 0.90, 5: 1.12,
+                6: 1.24, 7: 1.32, 8: 1.41, 9: 1.45, 10: 1.49
+            };
+            const RI = RIValues[n] || 1.49;
+
+            const CR = +(CI / RI).toFixed(3);
+
+            return {
+                normalizedMatrix,
+                criteriaWeights,
+                lambdaMax,
+                consistencyIndex: CI,
+                consistencyRatio: CR
+            };
+        }
+
+        function generateAlternativesMatrix() {
+    const numAlternatives = document.getElementById("alternatives-size").value;
+    const numCriteria = criteriaWeights.length;
+    const container = document.getElementById("alternatives-container");
+    container.innerHTML = "";
+
+    for (let i = 0; i < numAlternatives; i++) {
+        const rowDiv = document.createElement("div");
+        rowDiv.className = "matrix-row";
+
+        const nameInput = document.createElement("input");
+        nameInput.type = "text";
+        nameInput.placeholder = `Alternative ${i + 1} Name`;
+        nameInput.id = `alternative-name-${i}`;
+        rowDiv.appendChild(nameInput);
+
+        for (let j = 0; j < numCriteria; j++) {
+            const input = document.createElement("input");
+            input.type = "number";
+            input.step = "0.01";
+            input.id = `alternative-${i}-${j}`;
+            rowDiv.appendChild(input);
+        }
+
+        container.appendChild(rowDiv);
+    }
+}
+
+
+        function calculateAlternatives() {
+            const numAlternatives = parseInt(document.getElementById("alternatives-size").value);
+            const numCriteria = criteriaWeights.length;
+
+            if (isNaN(numAlternatives) || numAlternatives < 1) {
+                alert("Please enter a valid number of alternatives.");
+                return;
+            }
+
+            const alternativesMatrix = Array.from({ length: numAlternatives }, (_, i) =>
+                Array.from({ length: numCriteria }, (_, j) =>
+                    parseFloat(document.getElementById(`alternative-${i}-${j}`).value) || 0
+                )
+            );
+
+            const columnSums = Array(numCriteria).fill(0).map((_, j) =>
+                alternativesMatrix.reduce((sum, row) => sum + row[j], 0)
+            );
+            const normalizedAlternatives = alternativesMatrix.map(row =>
+                row.map((value, j) => +(value / columnSums[j]).toFixed(3))
+            );
+
+            const finalScores = normalizedAlternatives.map(row =>
+                +(row.reduce((sum, value, j) => sum + value * criteriaWeights[j], 0)).toFixed(3)
+            );
+
+            const bestAlternativeIndex = finalScores.indexOf(Math.max(...finalScores));
+
+            const resultsDiv = document.getElementById("results2");
+            resultsDiv.innerHTML = `
+                <h2>Alternatives Evaluation</h2>
+                <p><strong>Normalized Alternatives Matrix:</strong></p>
+                <pre>${normalizedAlternatives.map(row => row.join("\t")).join("\n")}</pre>
+                <p><strong>Final Scores:</strong> ${finalScores.join(", ")}</p>
+                <p><strong>Best Alternative:</strong> Alternative ${bestAlternativeIndex + 1} with a score of ${finalScores[bestAlternativeIndex]}</p>
+            `;
+        }
+
+        function displayResults({ normalizedMatrix, criteriaWeights, lambdaMax, consistencyIndex, consistencyRatio }) {
+            const resultsDiv = document.getElementById("results");
+            resultsDiv.innerHTML = `
+                <h2>AHP Results</h2>
+                <p><strong>Normalized Matrix:</strong></p>
+                <pre>${normalizedMatrix.map(row => row.join("\t")).join("\n")}</pre>
+                <p><strong>Criteria Weights:</strong> ${criteriaWeights.join(", ")}</p>
+                <p><strong>Lambda Max (λmax):</strong> ${lambdaMax}</p>
+                <p><strong>Consistency Index (CI):</strong> ${consistencyIndex}</p>
+                <p><strong>Consistency Ratio (CR):</strong> ${consistencyRatio}</p>
+                ${consistencyRatio > 0.1
+                    ? "<p><strong>Warning:</strong> Judgments are inconsistent (CR > 0.1).</p>"
+                    : "<p>Judgments are consistent (CR ≤ 0.1).</p>"}
+            `;
+        }
+    </script>
+</body>
+</html>
